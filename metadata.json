@@ -1,0 +1,6 @@
+{
+  "name": "BooleanAcademy",
+  "description": "A modern, premium student registration and educational portal where students learn by building and deploying real-world software engineering projects.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
