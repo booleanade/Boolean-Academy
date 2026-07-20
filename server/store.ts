@@ -1,5 +1,5 @@
-import { getDb } from './db';
-import { User, Submission, Course } from '../src/types';
+import { getDb } from './db.js';
+import { User, Submission, Course } from '../src/types.js';
 
 // In-Memory Fallbacks (used if MongoDB is not configured or fails to connect)
 const memoryUsers: User[] = [

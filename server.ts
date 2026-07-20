@@ -3,9 +3,9 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { OAuth2Client } from 'google-auth-library';
-import { isMongoConnected } from './server/db';
-import * as store from './server/store';
-import { User, Submission } from './src/types';
+import { isMongoConnected } from './server/db.js';
+import * as store from './server/store.js';
+import { User, Submission } from './src/types.js';
 
 dotenv.config();
 
