@@ -122,20 +122,20 @@ export default function Footer() {
             <ul className="space-y-3.5 text-sm">
               <li className="flex items-start space-x-2.5">
                 <Mail className="h-4 w-4 mt-1 text-primary-light flex-shrink-0" />
-                <a href="mailto:support@booleanacademy.com" className="hover:text-white transition-colors font-sans break-all">
-                  support@booleanacademy.com
+                <a href="mailto:info@booleantechconcepts.com" className="hover:text-white transition-colors font-sans break-all">
+                  info@booleantechconcepts.com
                 </a>
               </li>
               <li className="flex items-start space-x-2.5">
                 <Phone className="h-4 w-4 mt-1 text-primary-light flex-shrink-0" />
-                <a href="tel:+2348123456789" className="hover:text-white transition-colors font-sans">
-                  +234 812 345 6789
+                <a href="tel:+2348135004477" className="hover:text-white transition-colors font-sans">
+                  +234 813 500 4477
                 </a>
               </li>
               <li className="flex items-start space-x-2.5">
                 <MapPin className="h-4 w-4 mt-1 text-primary-light flex-shrink-0" />
                 <span>
-                  Lagos Tech Hub, Yaba, Lagos, Nigeria
+                  Boolean Academy Building, Nyanya Phase 4, Abuja FCT
                 </span>
               </li>
             </ul>
