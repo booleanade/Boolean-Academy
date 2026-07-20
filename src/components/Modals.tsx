@@ -38,6 +38,7 @@ export default function Modals() {
   const [isGoogleOpen, setIsGoogleOpen] = useState(false);
   const [googleMode, setGoogleMode] = useState<'signup' | 'signin'>('signin');
   const [googleRole, setGoogleRole] = useState<'student' | 'admin'>('student');
+  const [simulatedEmail, setSimulatedEmail] = useState('');
 
   // Google One-Tap/Identity Button initialization
   useEffect(() => {
@@ -786,8 +787,68 @@ export default function Modals() {
                 <div className="space-y-4">
                   <div className="flex justify-center py-2" id="google-signin-button-container"></div>
                   {!dbStatus?.googleClientId && (
-                    <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-800 text-left font-sans leading-relaxed">
-                      <strong>Google Sign-In Connection Needed:</strong> Please set up your Google Client ID or environment configuration to initialize the live Google authentication workflow.
+                    <div className="space-y-3">
+                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-800 text-left font-sans leading-relaxed">
+                        <strong>Google Sign-In Connection Needed:</strong> Please set up your Google Client ID or environment configuration to initialize the live Google authentication workflow.
+                      </div>
+                      
+                      {/* Interactive Simulator when Client ID is missing */}
+                      <div className="border border-dashed border-gray-200 rounded-2xl p-4 bg-gray-50/50 text-left">
+                        <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 text-center">
+                          ⚡ Auth Developer Simulator
+                        </span>
+                        <div className="space-y-2">
+                          <input
+                            type="email"
+                            placeholder="Type any Google email (e.g. user@gmail.com)"
+                            id="google-simulator-email"
+                            value={simulatedEmail}
+                            onChange={(e) => {
+                              setSimulatedEmail(e.target.value);
+                              setErrorMsg('');
+                            }}
+                            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-primary-base font-sans bg-white"
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                if (simulatedEmail && simulatedEmail.includes('@')) {
+                                  const res = await loginWithGoogle(simulatedEmail, googleRole);
+                                  if (res.success) {
+                                    setIsGoogleOpen(false);
+                                    setLoginOpen(false);
+                                    setRegisterOpen(false);
+                                    navigate('/dashboard');
+                                  } else {
+                                    setErrorMsg(res.error || 'Simulation failed.');
+                                  }
+                                } else {
+                                  setErrorMsg('Please enter a valid email for simulation.');
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (simulatedEmail && simulatedEmail.includes('@')) {
+                                const res = await loginWithGoogle(simulatedEmail, googleRole);
+                                if (res.success) {
+                                  setIsGoogleOpen(false);
+                                  setLoginOpen(false);
+                                  setRegisterOpen(false);
+                                  navigate('/dashboard');
+                                } else {
+                                  setErrorMsg(res.error || 'Simulation failed.');
+                                }
+                              } else {
+                                setErrorMsg('Please enter a valid email for simulation.');
+                              }
+                            }}
+                            className="w-full bg-primary-base text-white hover:bg-primary-dark font-sans font-bold text-xs py-2 px-4 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Simulate Google Sign-In / Sign-Up
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

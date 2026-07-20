@@ -29,8 +29,8 @@ export default function Footer() {
           {/* Brand Info */}
           <div className="space-y-4">
             <a href="#home" onClick={(e) => handleScrollToSection(e, '#home')} className="flex items-center space-x-2.5">
-              <div className="bg-primary-base p-2 rounded-xl text-white shadow-md">
-                <GraduationCap className="h-6 w-6" />
+              <div className="bg-white p-1 rounded-xl shadow-md w-10 h-10 flex items-center justify-center overflow-hidden">
+                <img src="https://i.imgur.com/oe15RJU.png" alt="Boolean Academy Logo" className="h-8 w-8 object-contain" referrerPolicy="no-referrer" />
               </div>
               <span className="text-xl font-bold tracking-tight text-white font-display">
                 Boolean<span className="text-accent-orange">Academy</span>

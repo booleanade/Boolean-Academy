@@ -89,8 +89,8 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <a href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }} className="flex items-center space-x-2.5 group">
-            <div className="bg-primary-dark p-2 rounded-xl text-white shadow-md shadow-blue-900/10 group-hover:bg-primary-base transition-all duration-300">
-              <GraduationCap className="h-6 w-6" id="nav-logo-icon" />
+            <div className="bg-white p-1 rounded-xl shadow-md shadow-blue-900/10 group-hover:scale-105 transition-all duration-300 w-10 h-10 flex items-center justify-center overflow-hidden">
+              <img src="https://i.imgur.com/oe15RJU.png" alt="Boolean Academy Logo" className="h-8 w-8 object-contain" referrerPolicy="no-referrer" />
             </div>
             <span className="text-xl font-bold tracking-tight text-primary-dark font-display">
               Boolean<span className="text-accent-orange">Academy</span>
