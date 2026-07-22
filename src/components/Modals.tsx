@@ -1102,6 +1102,18 @@ export default function Modals() {
                       {window.location.origin}
                     </p>
 
+                    {!dbStatus?.googleClientConfigured && (
+                      <div className="p-2.5 bg-red-50 border border-red-200 text-red-800 text-[11px] rounded-xl font-medium text-left space-y-1">
+                        <p className="font-bold">⚠️ Vercel Environment Notice:</p>
+                        <p>
+                          <code className="font-mono bg-red-100 px-1 py-0.5 rounded text-[10px]">GOOGLE_CLIENT_ID</code> is missing in Vercel Environment Variables.
+                        </p>
+                        <p className="text-[10px] text-red-700">
+                          The app is using the default fallback Client ID, which triggers <strong className="font-mono">origin_mismatch</strong> on Vercel. Add <code className="font-mono text-[10px]">GOOGLE_CLIENT_ID</code> in Vercel settings and redeploy.
+                        </p>
+                      </div>
+                    )}
+
                     <p className="text-[10px] text-amber-800/80 leading-normal">
                       To prevent <strong className="text-amber-900">Error 400: origin_mismatch</strong> on Vercel, copy this origin URL and add it under <strong>Authorized JavaScript origins</strong> for your Client ID in Google Cloud Console.
                     </p>
