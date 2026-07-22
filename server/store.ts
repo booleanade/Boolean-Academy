@@ -25,7 +25,86 @@ const memorySubmissions: Submission[] = [];
 // Map of userEmail (lowercase) -> Record of courseId -> array of completed modules
 const memoryCompletedModules: Record<string, Record<string, string[]>> = {};
 
-const initialCourses: Course[] = [];
+const initialCourses: Course[] = [
+  {
+    id: 'frontend',
+    title: 'Frontend Web Architecture & React',
+    description: 'Master modern frontend development with React, TypeScript, Tailwind CSS, state management, and performance optimization.',
+    duration: '10 Weeks',
+    category: 'development',
+    image: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800&auto=format&fit=crop&q=60',
+    difficulty: 'Intermediate',
+    syllabus: [
+      'Module 1: HTML5, CSS3 & Modern Responsive Design (Week 1-2)',
+      'Module 2: JavaScript ES6+ & Async Programming (Week 3-4)',
+      'Module 3: React Fundamentals & Component Architecture (Week 5-6)',
+      'Module 4: Advanced State Management & Custom Hooks (Week 7-8)',
+      'Module 5: Capstone Project Deployment to Vercel (Week 9-10)'
+    ]
+  },
+  {
+    id: 'backend',
+    title: 'Backend Systems & API Engineering',
+    description: 'Build scalable RESTful APIs and microservices with Node.js, Express, MongoDB, PostgreSQL, and OAuth security.',
+    duration: '12 Weeks',
+    category: 'development',
+    image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=800&auto=format&fit=crop&q=60',
+    difficulty: 'Intermediate',
+    syllabus: [
+      'Module 1: Node.js Runtime & Express Server Setup (Week 1-2)',
+      'Module 2: Database Design with MongoDB & Mongoose (Week 3-5)',
+      'Module 3: Authentication, JWT & Google OAuth 2.0 (Week 6-8)',
+      'Module 4: API Testing, Security & Middleware Architecture (Week 9-10)',
+      'Module 5: Production Deployment & Monitoring (Week 11-12)'
+    ]
+  },
+  {
+    id: 'fullstack',
+    title: 'Full Stack Software Engineering',
+    description: 'Comprehensive end-to-end full stack development combining React frontend with Express/MongoDB backend.',
+    duration: '16 Weeks',
+    category: 'development',
+    image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&auto=format&fit=crop&q=60',
+    difficulty: 'Advanced',
+    syllabus: [
+      'Module 1: Monorepo Architecture & TypeScript Standards (Week 1-3)',
+      'Module 2: Full Stack Auth Flow (Google OAuth & JWT) (Week 4-6)',
+      'Module 3: Complex Data Relations & Database Optimization (Week 7-10)',
+      'Module 4: CI/CD Pipelines with GitHub Actions & Vercel (Week 11-13)',
+      'Module 5: Production Capstone Project & Code Review (Week 14-16)'
+    ]
+  },
+  {
+    id: 'cybersec',
+    title: 'Cybersecurity & Ethical Hacking',
+    description: 'Understand web security vulnerabilities, OWASP Top 10, network analysis, penetration testing, and secure coding.',
+    duration: '8 Weeks',
+    category: 'security',
+    image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=60',
+    difficulty: 'Intermediate',
+    syllabus: [
+      'Module 1: Network Protocols & Traffic Analysis (Week 1-2)',
+      'Module 2: OWASP Top 10 Web Vulnerabilities (Week 3-4)',
+      'Module 3: Penetration Testing & Ethical Hacking Basics (Week 5-6)',
+      'Module 4: Incident Response & Defensive Auditing (Week 7-8)'
+    ]
+  },
+  {
+    id: 'uiux',
+    title: 'UI/UX Product Design & Design Systems',
+    description: 'Design intuitive digital experiences, wireframes, interactive prototypes in Figma, and build accessible UI components.',
+    duration: '8 Weeks',
+    category: 'design',
+    image: 'https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?w=800&auto=format&fit=crop&q=60',
+    difficulty: 'Beginner',
+    syllabus: [
+      'Module 1: User Research & Persona Creation (Week 1-2)',
+      'Module 2: Wireframing & Prototyping in Figma (Week 3-4)',
+      'Module 3: Design Systems & Visual Hierarchy (Week 5-6)',
+      'Module 4: Usability Testing & Handoff to Engineers (Week 7-8)'
+    ]
+  }
+];
 
 const memoryCourses: Course[] = [...initialCourses];
 
@@ -74,12 +153,6 @@ async function seedMongoIfEmpty() {
         }
 
         const coursesCol = db.collection('courses');
-        
-        // Clean up the mock courses if they exist
-        await coursesCol.deleteMany({
-          id: { $in: ['frontend', 'backend', 'fullstack', 'uiux', 'cybersec', 'mobile'] }
-        });
-
         const coursesCount = await coursesCol.countDocuments();
         if (coursesCount === 0 && initialCourses.length > 0) {
           console.log('Seeding MongoDB with initial academic courses...');
