@@ -786,7 +786,7 @@ export default function Modals() {
                 {/* Live Google Auth Integration */}
                 <div className="space-y-4">
                   <div className="flex justify-center py-2" id="google-signin-button-container"></div>
-                  {!dbStatus?.googleClientId && (
+                  {dbStatus !== null && !dbStatus.googleClientId && (
                     <div className="space-y-3">
                       <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-800 text-left font-sans leading-relaxed">
                         <strong>Google Sign-In Connection Needed:</strong> Please set up your Google Client ID or environment configuration to initialize the live Google authentication workflow.
