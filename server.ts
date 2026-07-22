@@ -7,14 +7,15 @@ import { isMongoConnected } from './server/db.js';
 import * as store from './server/store.js';
 import { User, Submission } from './src/types.js';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = 3000;
 
 // Setup Google Auth Client safely
-const googleClientId = process.env.GOOGLE_CLIENT_ID;
-const oauthClient = googleClientId ? new OAuth2Client(googleClientId) : null;
+const googleClientId = process.env.GOOGLE_CLIENT_ID || '1027156068869-hcibk8icgev7l6alma9ogotiudodje1p.apps.googleusercontent.com';
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+const oauthClient = new OAuth2Client(googleClientId, googleClientSecret);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));

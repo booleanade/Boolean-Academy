@@ -48,7 +48,7 @@ export default function Modals() {
   const [showClientIdConfig, setShowClientIdConfig] = useState(false);
   const [copiedOrigin, setCopiedOrigin] = useState(false);
 
-  const activeClientId = dbStatus?.googleClientId || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || customClientId || '';
+  const activeClientId = dbStatus?.googleClientId || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || customClientId || '1027156068869-hcibk8icgev7l6alma9ogotiudodje1p.apps.googleusercontent.com';
 
   const copyCurrentOrigin = () => {
     if (navigator.clipboard) {
