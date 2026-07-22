@@ -34,46 +34,145 @@ export default function Modals() {
   const [loginRole, setLoginRole] = useState<'student' | 'admin'>('student');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Google OAuth Simulation state
+  // Google OAuth Simulation & GIS state
   const [isGoogleOpen, setIsGoogleOpen] = useState(false);
   const [googleMode, setGoogleMode] = useState<'signup' | 'signin'>('signin');
   const [googleRole, setGoogleRole] = useState<'student' | 'admin'>('student');
   const [simulatedEmail, setSimulatedEmail] = useState('');
 
-  // Google One-Tap/Identity Button initialization
+  // Dynamically load Google GSI Client script
   useEffect(() => {
-    if (isGoogleOpen && (window as any).google?.accounts?.id && dbStatus?.googleClientId) {
-      try {
-        (window as any).google.accounts.id.initialize({
-          client_id: dbStatus.googleClientId,
-          callback: async (response: any) => {
-            const res = await loginWithGoogle(response.credential, googleRole);
-            if (res.success) {
-              setIsGoogleOpen(false);
-              setLoginOpen(false);
-              setRegisterOpen(false);
-              navigate('/dashboard');
-            } else {
-              setErrorMsg(res.error || 'Google authentication failed. Please try again.');
-            }
-          },
-          auto_select: false
-        });
+    if (!document.getElementById('google-gsi-client-script')) {
+      const script = document.createElement('script');
+      script.id = 'google-gsi-client-script';
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+  }, []);
 
-        // Delay slightly to ensure element is in the DOM
-        setTimeout(() => {
-          const container = document.getElementById("google-signin-button-container");
-          if (container && (window as any).google?.accounts?.id) {
-            (window as any).google.accounts.id.renderButton(
-              container,
-              { theme: "outline", size: "large", width: 320 }
-            );
+  // Popup OAuth handler to trigger Google Account selector directly
+  const triggerGoogleOAuthPopup = () => {
+    setErrorMsg('');
+    const googleObj = (window as any).google;
+    const clientId = dbStatus?.googleClientId;
+
+    if (clientId && googleObj?.accounts?.oauth2) {
+      try {
+        const client = googleObj.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'email profile openid',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse && tokenResponse.access_token) {
+              try {
+                const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                });
+                if (userInfoRes.ok) {
+                  const userInfo = await userInfoRes.json();
+                  const userEmail = userInfo.email || userInfo.sub;
+                  const res = await loginWithGoogle(userEmail, googleRole);
+                  if (res.success) {
+                    setIsGoogleOpen(false);
+                    setLoginOpen(false);
+                    setRegisterOpen(false);
+                    navigate('/dashboard');
+                  } else {
+                    setErrorMsg(res.error || 'Google sign-in failed.');
+                  }
+                } else {
+                  setErrorMsg('Failed to retrieve profile from Google.');
+                }
+              } catch (err) {
+                console.error('Error fetching Google userinfo:', err);
+                setErrorMsg('Google profile request error.');
+              }
+            }
           }
-        }, 150);
+        });
+        client.requestAccessToken();
+        return;
       } catch (err) {
-        console.error('Failed to render Google button:', err);
+        console.warn('OAuth2 popup client failed, falling back to GIS prompt:', err);
       }
     }
+
+    if (googleObj?.accounts?.id) {
+      try {
+        googleObj.accounts.id.prompt();
+        return;
+      } catch (err) {
+        console.warn('GIS prompt failed:', err);
+      }
+    }
+  };
+
+  // Poll for Google Script & Modal Container DOM element when modal opens
+  useEffect(() => {
+    if (!isGoogleOpen) return;
+
+    let attempts = 0;
+    const maxAttempts = 60; // 6 seconds
+    let isRendered = false;
+
+    const handleCredential = async (response: any) => {
+      if (response?.credential) {
+        const res = await loginWithGoogle(response.credential, googleRole);
+        if (res.success) {
+          setIsGoogleOpen(false);
+          setLoginOpen(false);
+          setRegisterOpen(false);
+          navigate('/dashboard');
+        } else {
+          setErrorMsg(res.error || 'Google authentication failed. Please try again.');
+        }
+      }
+    };
+
+    const interval = setInterval(() => {
+      attempts++;
+      const container = document.getElementById('google-signin-button-container');
+      const googleObj = (window as any).google;
+
+      if (googleObj?.accounts?.id && container && !isRendered) {
+        isRendered = true;
+        clearInterval(interval);
+
+        try {
+          if (dbStatus?.googleClientId) {
+            googleObj.accounts.id.initialize({
+              client_id: dbStatus.googleClientId,
+              callback: handleCredential,
+              auto_select: false
+            });
+
+            container.innerHTML = '';
+            googleObj.accounts.id.renderButton(
+              container,
+              { theme: 'outline', size: 'large', width: 320 }
+            );
+
+            // Attempt One Tap prompt
+            try {
+              googleObj.accounts.id.prompt();
+            } catch (e) {
+              // Ignore prompt suppressed warnings
+            }
+          }
+        } catch (err) {
+          console.error('Failed to render Google button:', err);
+        }
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, [isGoogleOpen, dbStatus, googleRole]);
 
   // Course syllabus details
@@ -786,71 +885,79 @@ export default function Modals() {
                 {/* Live Google Auth Integration */}
                 <div className="space-y-4">
                   <div className="flex justify-center py-2" id="google-signin-button-container"></div>
-                  {dbStatus !== null && !dbStatus.googleClientId && (
-                    <div className="space-y-3">
-                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-800 text-left font-sans leading-relaxed">
-                        <strong>Google Sign-In Connection Needed:</strong> Please set up your Google Client ID or environment configuration to initialize the live Google authentication workflow.
-                      </div>
-                      
-                      {/* Interactive Simulator when Client ID is missing */}
-                      <div className="border border-dashed border-gray-200 rounded-2xl p-4 bg-gray-50/50 text-left">
-                        <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 text-center">
-                          ⚡ Auth Developer Simulator
-                        </span>
-                        <div className="space-y-2">
-                          <input
-                            type="email"
-                            placeholder="Type any Google email (e.g. user@gmail.com)"
-                            id="google-simulator-email"
-                            value={simulatedEmail}
-                            onChange={(e) => {
-                              setSimulatedEmail(e.target.value);
-                              setErrorMsg('');
-                            }}
-                            className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-primary-base font-sans bg-white"
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Enter') {
-                                if (simulatedEmail && simulatedEmail.includes('@')) {
-                                  const res = await loginWithGoogle(simulatedEmail, googleRole);
-                                  if (res.success) {
-                                    setIsGoogleOpen(false);
-                                    setLoginOpen(false);
-                                    setRegisterOpen(false);
-                                    navigate('/dashboard');
-                                  } else {
-                                    setErrorMsg(res.error || 'Simulation failed.');
-                                  }
-                                } else {
-                                  setErrorMsg('Please enter a valid email for simulation.');
-                                }
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (simulatedEmail && simulatedEmail.includes('@')) {
-                                const res = await loginWithGoogle(simulatedEmail, googleRole);
-                                if (res.success) {
-                                  setIsGoogleOpen(false);
-                                  setLoginOpen(false);
-                                  setRegisterOpen(false);
-                                  navigate('/dashboard');
-                                } else {
-                                  setErrorMsg(res.error || 'Simulation failed.');
-                                }
-                              } else {
-                                setErrorMsg('Please enter a valid email for simulation.');
-                              }
-                            }}
-                            className="w-full bg-primary-base text-white hover:bg-primary-dark font-sans font-bold text-xs py-2 px-4 rounded-xl transition-colors cursor-pointer"
-                          >
-                            Simulate Google Sign-In / Sign-Up
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+
+                  {dbStatus?.googleClientId && (
+                    <button
+                      type="button"
+                      onClick={triggerGoogleOAuthPopup}
+                      className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-white border border-gray-300 hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-700 shadow-sm transition-all cursor-pointer"
+                      id="btn-trigger-google-popup"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                      </svg>
+                      <span>Pick Google Account (Popup)</span>
+                    </button>
                   )}
+
+                  {/* Fallback Direct Google Account Selector / Entry */}
+                  <div className="border border-gray-100 rounded-2xl p-3.5 bg-gray-50/50 text-left space-y-2">
+                    <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                      Or Sign In With Google Account Email
+                    </span>
+                    <input
+                      type="email"
+                      placeholder="Enter Google account email (e.g. user@gmail.com)"
+                      id="google-simulator-email"
+                      value={simulatedEmail}
+                      onChange={(e) => {
+                        setSimulatedEmail(e.target.value);
+                        setErrorMsg('');
+                      }}
+                      className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-primary-base font-sans bg-white"
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          if (simulatedEmail && simulatedEmail.includes('@')) {
+                            const res = await loginWithGoogle(simulatedEmail, googleRole);
+                            if (res.success) {
+                              setIsGoogleOpen(false);
+                              setLoginOpen(false);
+                              setRegisterOpen(false);
+                              navigate('/dashboard');
+                            } else {
+                              setErrorMsg(res.error || 'Google sign-in failed.');
+                            }
+                          } else {
+                            setErrorMsg('Please enter a valid Google email address.');
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (simulatedEmail && simulatedEmail.includes('@')) {
+                          const res = await loginWithGoogle(simulatedEmail, googleRole);
+                          if (res.success) {
+                            setIsGoogleOpen(false);
+                            setLoginOpen(false);
+                            setRegisterOpen(false);
+                            navigate('/dashboard');
+                          } else {
+                            setErrorMsg(res.error || 'Google sign-in failed.');
+                          }
+                        } else {
+                          setErrorMsg('Please enter a valid Google email address.');
+                        }
+                      }}
+                      className="w-full bg-primary-base text-white hover:bg-primary-dark font-sans font-bold text-xs py-2 px-4 rounded-xl transition-colors cursor-pointer"
+                    >
+                      Continue with Google Account
+                    </button>
+                  </div>
                 </div>
 
                 <div className="text-[10px] text-gray-400 leading-normal pt-2 font-sans">
