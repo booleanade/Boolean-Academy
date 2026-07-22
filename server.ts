@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { OAuth2Client } from 'google-auth-library';
-import { isMongoConnected } from './server/db.js';
+import { isMongoConnected, getMongoStatus } from './server/db.js';
 import * as store from './server/store.js';
 import { User, Submission } from './src/types.js';
 
@@ -22,12 +22,15 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // API: System Connection Status
 app.get('/api/status', async (req, res) => {
   const db = await store.getDb();
-  const isConnected = isMongoConnected();
+  const statusInfo = getMongoStatus();
+  const isCustomGoogleId = !!(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID);
   res.json({
-    mongodbConnected: isConnected,
-    googleClientConfigured: !!googleClientId,
-    googleClientId: googleClientId || null,
-    mode: isConnected ? 'MongoDB Live' : 'Mock Memory Fallback'
+    mongodbConnected: statusInfo.mongodbConnected,
+    mongoUriProvided: statusInfo.mongoUriProvided,
+    mongoError: statusInfo.mongoError,
+    googleClientConfigured: isCustomGoogleId,
+    googleClientId: googleClientId,
+    mode: statusInfo.mongodbConnected ? 'MongoDB Live' : 'Mock Memory Fallback'
   });
 });
 

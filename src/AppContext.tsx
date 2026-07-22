@@ -4,6 +4,8 @@ import ToastNotification from './components/ToastNotification';
 
 interface DBStatus {
   mongodbConnected: boolean;
+  mongoUriProvided?: boolean;
+  mongoError?: string | null;
   googleClientConfigured: boolean;
   googleClientId: string | null;
   mode: string;

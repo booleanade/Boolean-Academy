@@ -3,10 +3,16 @@ import { MongoClient, Db } from 'mongodb';
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
 let connectionPromise: Promise<Db | null> | null = null;
+let lastMongoError: string | null = null;
+
+export function getMongoUri(): string | null {
+  return process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL || process.env.MONGODB_URL || null;
+}
 
 export async function getDb(): Promise<Db | null> {
-  const uri = process.env.MONGODB_URI;
+  const uri = getMongoUri();
   if (!uri) {
+    lastMongoError = 'No MongoDB connection string found in environment variables (checked MONGODB_URI, MONGO_URI, DATABASE_URL, MONGODB_URL).';
     return null;
   }
 
@@ -31,10 +37,12 @@ export async function getDb(): Promise<Db | null> {
       }
       await cachedClient.connect();
       cachedDb = cachedClient.db();
+      lastMongoError = null;
       console.log('Successfully connected to MongoDB Atlas!');
       return cachedDb;
     } catch (error: any) {
-      console.error(`MongoDB Connection Error: ${error?.message || error}. Falling back to Local Memory Store.`);
+      lastMongoError = error?.message || String(error);
+      console.error(`MongoDB Connection Error: ${lastMongoError}. Falling back to Local Memory Store.`);
       cachedClient = null;
       cachedDb = null;
       return null;
@@ -49,4 +57,14 @@ export async function getDb(): Promise<Db | null> {
 export function isMongoConnected(): boolean {
   return !!cachedDb;
 }
+
+export function getMongoStatus() {
+  const uri = getMongoUri();
+  return {
+    mongoUriProvided: !!uri,
+    mongodbConnected: !!cachedDb,
+    mongoError: lastMongoError,
+  };
+}
+
 
