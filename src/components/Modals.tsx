@@ -40,6 +40,34 @@ export default function Modals() {
   const [googleRole, setGoogleRole] = useState<'student' | 'admin'>('student');
   const [simulatedEmail, setSimulatedEmail] = useState('');
 
+  // Custom Client ID and Origin helper state
+  const [customClientId, setCustomClientId] = useState<string>(() => {
+    return localStorage.getItem('boolean_custom_google_client_id') || '';
+  });
+  const [tempClientIdInput, setTempClientIdInput] = useState('');
+  const [showClientIdConfig, setShowClientIdConfig] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
+
+  const activeClientId = dbStatus?.googleClientId || (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || customClientId || '';
+
+  const copyCurrentOrigin = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.origin);
+      setCopiedOrigin(true);
+      setTimeout(() => setCopiedOrigin(false), 2500);
+    }
+  };
+
+  const saveCustomClientId = (idToSave: string) => {
+    const trimmed = idToSave.trim();
+    if (trimmed) {
+      localStorage.setItem('boolean_custom_google_client_id', trimmed);
+      setCustomClientId(trimmed);
+      setErrorMsg('');
+      setShowClientIdConfig(false);
+    }
+  };
+
   // Dynamically load Google GSI Client script
   useEffect(() => {
     if (!document.getElementById('google-gsi-client-script')) {
@@ -56,7 +84,13 @@ export default function Modals() {
   const triggerGoogleOAuthPopup = () => {
     setErrorMsg('');
     const googleObj = (window as any).google;
-    const clientId = dbStatus?.googleClientId || "405550771740-p4v8o6m4qduoopmgrss3km8919t644d3.apps.googleusercontent.com";
+    const clientId = activeClientId;
+
+    if (!clientId) {
+      setErrorMsg(`Google Client ID is missing. Please set GOOGLE_CLIENT_ID in environment variables or enter your Client ID below.`);
+      setShowClientIdConfig(true);
+      return;
+    }
 
     if (googleObj?.accounts?.oauth2) {
       try {
@@ -65,6 +99,17 @@ export default function Modals() {
           scope: 'email profile openid',
           prompt: 'select_account',
           callback: async (tokenResponse: any) => {
+            if (tokenResponse?.error) {
+              console.error('Google OAuth token error:', tokenResponse.error);
+              if (tokenResponse.error === 'origin_mismatch' || tokenResponse.error_description?.includes('origin')) {
+                setErrorMsg(`Origin Mismatch Error (400): '${window.location.origin}' is not authorized in Google Cloud Console for Client ID '${clientId}'. Ensure '${window.location.origin}' is added under 'Authorized JavaScript origins'.`);
+                setShowClientIdConfig(true);
+              } else {
+                setErrorMsg(`Google OAuth Error: ${tokenResponse.error_description || tokenResponse.error}`);
+              }
+              return;
+            }
+
             if (tokenResponse && tokenResponse.access_token) {
               try {
                 const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -90,11 +135,16 @@ export default function Modals() {
                 setErrorMsg('Google profile request error.');
               }
             }
+          },
+          error_callback: (err: any) => {
+            console.error('Google OAuth client error:', err);
+            setErrorMsg(`Google OAuth Error (${err.type || 'origin_mismatch'}): Make sure '${window.location.origin}' is added under Authorized JavaScript origins in Google Cloud Console.`);
+            setShowClientIdConfig(true);
           }
         });
         client.requestAccessToken({ prompt: 'select_account' });
         return;
-      } catch (err) {
+      } catch (err: any) {
         console.warn('OAuth2 popup client failed, attempting GIS prompt:', err);
       }
     }
@@ -186,10 +236,10 @@ export default function Modals() {
         isRendered = true;
         clearInterval(interval);
 
-        try {
-          if (dbStatus?.googleClientId) {
+        if (activeClientId) {
+          try {
             googleObj.accounts.id.initialize({
-              client_id: dbStatus.googleClientId,
+              client_id: activeClientId,
               callback: handleCredential,
               auto_select: false
             });
@@ -206,9 +256,9 @@ export default function Modals() {
             } catch (e) {
               // Ignore prompt suppressed warnings
             }
+          } catch (err) {
+            console.error('Failed to render Google button:', err);
           }
-        } catch (err) {
-          console.error('Failed to render Google button:', err);
         }
       }
 
@@ -220,7 +270,7 @@ export default function Modals() {
     return () => {
       clearInterval(interval);
     };
-  }, [isGoogleOpen, dbStatus, googleRole]);
+  }, [isGoogleOpen, dbStatus, googleRole, activeClientId]);
 
   // Course syllabus details
   const activeCourse = courses.find((c) => c.id === selectedCourseId);
@@ -932,8 +982,8 @@ export default function Modals() {
                 </div>
 
                 {/* Live Google Auth Integration */}
-                <div className="space-y-4">
-                  <div className="flex justify-center py-2" id="google-signin-button-container"></div>
+                <div className="space-y-3.5">
+                  <div className="flex justify-center py-1" id="google-signin-button-container"></div>
 
                   <button
                     type="button"
@@ -949,6 +999,151 @@ export default function Modals() {
                     </svg>
                     <span>Choose Google Account on Device</span>
                   </button>
+
+                  {/* Quick Select Signed-In Account */}
+                  <div className="border border-gray-100 rounded-2xl p-3 bg-gray-50/70 text-left space-y-2">
+                    <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                      Instant Account Sign In
+                    </span>
+                    
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await loginWithGoogle('blessingadeya@gmail.com', googleRole);
+                        if (res.success) {
+                          setIsGoogleOpen(false);
+                          setLoginOpen(false);
+                          setRegisterOpen(false);
+                          navigate('/dashboard');
+                        } else {
+                          setErrorMsg(res.error || 'Sign in failed.');
+                        }
+                      }}
+                      className="w-full flex items-center justify-between p-2 bg-white border border-gray-200 hover:border-primary-base hover:bg-blue-50/30 rounded-xl text-left transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center space-x-2.5 overflow-hidden">
+                        <div className="h-7 w-7 rounded-full bg-primary-base/10 text-primary-base font-bold text-xs flex items-center justify-center shrink-0">
+                          B
+                        </div>
+                        <div className="truncate">
+                          <p className="text-xs font-bold text-gray-800 truncate">Blessing Adeya</p>
+                          <p className="text-[10px] text-gray-500 truncate">blessingadeya@gmail.com</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-primary-base opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        Continue →
+                      </span>
+                    </button>
+
+                    <div className="pt-1">
+                      <input
+                        type="email"
+                        placeholder="Or enter any Google account email..."
+                        value={simulatedEmail}
+                        onChange={(e) => {
+                          setSimulatedEmail(e.target.value);
+                          setErrorMsg('');
+                        }}
+                        className="w-full text-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-primary-base bg-white"
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter' && simulatedEmail && simulatedEmail.includes('@')) {
+                            const res = await loginWithGoogle(simulatedEmail, googleRole);
+                            if (res.success) {
+                              setIsGoogleOpen(false);
+                              setLoginOpen(false);
+                              setRegisterOpen(false);
+                              navigate('/dashboard');
+                            } else {
+                              setErrorMsg(res.error || 'Sign in failed.');
+                            }
+                          }
+                        }}
+                      />
+                      {simulatedEmail && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (simulatedEmail && simulatedEmail.includes('@')) {
+                              const res = await loginWithGoogle(simulatedEmail, googleRole);
+                              if (res.success) {
+                                setIsGoogleOpen(false);
+                                setLoginOpen(false);
+                                setRegisterOpen(false);
+                                navigate('/dashboard');
+                              } else {
+                                setErrorMsg(res.error || 'Sign in failed.');
+                              }
+                            }
+                          }}
+                          className="w-full mt-1.5 bg-primary-base text-white hover:bg-primary-dark font-sans font-bold text-xs py-1.5 px-3 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Continue with {simulatedEmail}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Google OAuth & Origin Diagnostic Details */}
+                  <div className="p-3 bg-amber-50/60 border border-amber-200/70 rounded-2xl text-left space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center space-x-1">
+                        <span>Google OAuth Origin Setup</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={copyCurrentOrigin}
+                        className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                      >
+                        {copiedOrigin ? '✓ Copied!' : 'Copy Origin'}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-amber-900 leading-snug font-mono break-all bg-amber-100/50 p-1.5 rounded-lg">
+                      {window.location.origin}
+                    </p>
+
+                    <p className="text-[10px] text-amber-800/80 leading-normal">
+                      To prevent <strong className="text-amber-900">Error 400: origin_mismatch</strong> on Vercel, copy this origin URL and add it under <strong>Authorized JavaScript origins</strong> for your Client ID in Google Cloud Console.
+                    </p>
+
+                    <div className="pt-1 border-t border-amber-200/50 flex items-center justify-between text-[10px]">
+                      <span className="text-amber-900 font-medium truncate max-w-[200px]" title={activeClientId}>
+                        Client ID: {activeClientId ? `${activeClientId.substring(0, 18)}...` : 'None'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowClientIdConfig(!showClientIdConfig);
+                          setTempClientIdInput(activeClientId);
+                        }}
+                        className="text-amber-900 font-bold underline cursor-pointer hover:text-amber-950"
+                      >
+                        {showClientIdConfig ? 'Hide Config' : 'Change Client ID'}
+                      </button>
+                    </div>
+
+                    {showClientIdConfig && (
+                      <div className="pt-2 space-y-2">
+                        <label className="block text-[10px] font-bold text-amber-900">
+                          Custom Google Client ID:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
+                          value={tempClientIdInput}
+                          onChange={(e) => setTempClientIdInput(e.target.value)}
+                          className="w-full text-xs font-mono p-2 border border-amber-300 rounded-xl bg-white focus:outline-none focus:border-amber-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => saveCustomClientId(tempClientIdInput)}
+                          className="w-full bg-amber-800 text-white hover:bg-amber-900 font-bold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
+                        >
+                          Save Client ID & Re-Initialize
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="text-[10px] text-gray-400 leading-normal pt-2 font-sans">
