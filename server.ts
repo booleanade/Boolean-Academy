@@ -46,40 +46,59 @@ app.post('/api/auth/google', async (req, res) => {
   let name: string = '';
   let googleId: string = '';
 
-  // 1. Try real verification if Google Client ID is configured and credential is a real JWT token
+  // 1. If credential is a JWT (3 dot-separated parts), verify via Google tokeninfo endpoint
   const isJwt = typeof credential === 'string' && credential.split('.').length === 3;
-  if (oauthClient && googleClientId && isJwt) {
+  if (isJwt) {
     try {
-      const ticket = await oauthClient.verifyIdToken({
-        idToken: credential,
-        audience: googleClientId,
-      });
-      const payload = ticket.getPayload();
-      if (payload) {
-        email = payload.email || '';
-        name = payload.name || payload.given_name || '';
-        googleId = payload.sub || '';
+      const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+      if (tokenInfoRes.ok) {
+        const data = await tokenInfoRes.json();
+        if (data.email) {
+          email = data.email.toLowerCase();
+          name = data.name || data.given_name || (email ? email.split('@')[0] : '');
+          googleId = data.sub || `google-${email}`;
+        }
       }
     } catch (err) {
-      console.warn('Real Google Verification failed. Attempting decode fallback for development testing:', err);
+      console.warn('Google tokeninfo endpoint check error:', err);
     }
-  }
 
-  // 2. Fallback decode if real verification is not configured or failed
-  if (!email && isJwt) {
-    try {
-      const parts = credential.split('.');
-      if (parts.length === 3) {
-        const base64Url = parts[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
-        const decoded = JSON.parse(jsonPayload);
-        email = decoded.email || '';
-        name = decoded.name || decoded.given_name || (email ? email.split('@')[0] : '');
-        googleId = decoded.sub || '';
+    // 1b. Fallback to OAuth2Client verifyIdToken if tokeninfo didn't populate email
+    if (!email && oauthClient && googleClientId) {
+      try {
+        const ticket = await oauthClient.verifyIdToken({
+          idToken: credential,
+          audience: googleClientId,
+        });
+        const payload = ticket.getPayload();
+        if (payload && payload.email) {
+          email = payload.email.toLowerCase();
+          name = payload.name || payload.given_name || (email ? email.split('@')[0] : '');
+          googleId = payload.sub || `google-${email}`;
+        }
+      } catch (err) {
+        console.warn('Real Google Verification fallback failed:', err);
       }
-    } catch (e) {
-      console.error('Fallback JWT decode error:', e);
+    }
+
+    // 1c. Direct JWT base64 payload decode fallback
+    if (!email) {
+      try {
+        const parts = credential.split('.');
+        if (parts.length === 3) {
+          const base64Url = parts[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
+          const decoded = JSON.parse(jsonPayload);
+          if (decoded.email) {
+            email = decoded.email.toLowerCase();
+            name = decoded.name || decoded.given_name || (email ? email.split('@')[0] : '');
+            googleId = decoded.sub || `google-${email}`;
+          }
+        }
+      } catch (e) {
+        console.error('Fallback JWT decode error:', e);
+      }
     }
   }
 
