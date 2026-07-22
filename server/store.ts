@@ -1,4 +1,5 @@
 import { getDb } from './db.js';
+export { getDb };
 import { User, Submission, Course } from '../src/types.js';
 
 // In-Memory Fallbacks (used if MongoDB is not configured or fails to connect)
@@ -476,3 +477,18 @@ export async function deleteCourseFromStore(id: string): Promise<boolean> {
     return false;
   }
 }
+
+export async function resetCoursesInStore(): Promise<Course[]> {
+  const db = await getDb();
+  if (db) {
+    const col = db.collection('courses');
+    await col.deleteMany({});
+    await col.insertMany(initialCourses);
+    return initialCourses;
+  } else {
+    memoryCourses.length = 0;
+    memoryCourses.push(...initialCourses);
+    return memoryCourses;
+  }
+}
+

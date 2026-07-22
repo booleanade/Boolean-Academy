@@ -12,7 +12,7 @@ const app = express();
 const PORT = 3000;
 
 // Setup Google Auth Client safely
-const googleClientId = process.env.GOOGLE_CLIENT_ID || '1027156068869-hcibk8icgev7l6alma9ogotiudodje1p.apps.googleusercontent.com';
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '1027156068869-hcibk8icgev7l6alma9ogotiudodje1p.apps.googleusercontent.com';
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 const oauthClient = new OAuth2Client(googleClientId, googleClientSecret);
 
@@ -21,6 +21,7 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // API: System Connection Status
 app.get('/api/status', async (req, res) => {
+  const db = await store.getDb();
   const isConnected = isMongoConnected();
   res.json({
     mongodbConnected: isConnected,
@@ -62,24 +63,28 @@ app.post('/api/auth/google', async (req, res) => {
   }
 
   // 2. Fallback decode if real verification is not configured or failed
-  if (!email) {
+  if (!email && isJwt) {
     try {
       const parts = credential.split('.');
       if (parts.length === 3) {
-        const decoded = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+        const base64Url = parts[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
+        const decoded = JSON.parse(jsonPayload);
         email = decoded.email || '';
-        name = decoded.name || decoded.given_name || '';
+        name = decoded.name || decoded.given_name || (email ? email.split('@')[0] : '');
         googleId = decoded.sub || '';
       }
     } catch (e) {
-      // Allow simulator text credential (e.g. email from the user selection popup)
-      if (typeof credential === 'string' && credential.includes('@')) {
-        email = credential;
-        name = credential.split('@')[0];
-        name = name.charAt(0).toUpperCase() + name.slice(1);
-        googleId = `simulator-id-${email}`;
-      }
+      console.error('Fallback JWT decode error:', e);
     }
+  }
+
+  if (!email && typeof credential === 'string' && credential.includes('@')) {
+    email = credential.trim().toLowerCase();
+    name = email.split('@')[0];
+    name = name.charAt(0).toUpperCase() + name.slice(1);
+    googleId = `simulator-id-${email}`;
   }
 
   if (!email) {
@@ -102,7 +107,7 @@ app.post('/api/auth/google', async (req, res) => {
     } else {
       // User exists, verify role matches
       if (role && user.role !== role) {
-        return res.status(403).json({ error: `Access Denied: Your Google account's registered role does not match the selected login mode (${role === 'admin' ? 'Admin' : 'Student'}). Please select the correct role (Student or Admin) and try again.` });
+        return res.status(403).json({ error: `Access Denied: Your Google account (${email}) is registered as a ${user.role.toUpperCase()}. You selected "${role.toUpperCase()}" mode. Please select "${user.role.toUpperCase()}" role mode to sign in.` });
       }
     }
 
@@ -391,6 +396,16 @@ app.delete('/api/admin/courses/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.post('/api/admin/courses/reset', async (req, res) => {
+  try {
+    const list = await store.resetCoursesInStore();
+    res.json({ success: true, courses: list });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Vite Server / SPA static serving (development / standalone production)
 async function startServer() {

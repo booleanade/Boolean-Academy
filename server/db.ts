@@ -1,51 +1,52 @@
 import { MongoClient, Db } from 'mongodb';
 
-let client: MongoClient | null = null;
-let db: Db | null = null;
-let isConnected = false;
-let hasFailed = false;
-let lastAttemptTime = 0;
-const RETRY_COOLDOWN_MS = 60000; // 1 minute cooldown between reconnection attempts
+let cachedClient: MongoClient | null = null;
+let cachedDb: Db | null = null;
+let connectionPromise: Promise<Db | null> | null = null;
 
 export async function getDb(): Promise<Db | null> {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
     return null;
   }
-  if (db && isConnected) {
-    return db;
+
+  // Return existing connected Db instance if available
+  if (cachedDb) {
+    return cachedDb;
   }
 
-  const now = Date.now();
-  if (hasFailed && (now - lastAttemptTime < RETRY_COOLDOWN_MS)) {
-    // Return null immediately without trying to connect and stalling API calls
-    return null;
+  // Reuse ongoing connection attempt to prevent race conditions
+  if (connectionPromise) {
+    return connectionPromise;
   }
 
-  try {
-    lastAttemptTime = now;
-    // Avoid re-creating client if it exists but is disconnected
-    if (!client) {
-      client = new MongoClient(uri, {
-        connectTimeoutMS: 2000,
-        serverSelectionTimeoutMS: 2000,
-      });
+  connectionPromise = (async () => {
+    try {
+      if (!cachedClient) {
+        cachedClient = new MongoClient(uri, {
+          connectTimeoutMS: 10000,
+          serverSelectionTimeoutMS: 10000,
+          maxPoolSize: 10,
+        });
+      }
+      await cachedClient.connect();
+      cachedDb = cachedClient.db();
+      console.log('Successfully connected to MongoDB Atlas!');
+      return cachedDb;
+    } catch (error: any) {
+      console.error(`MongoDB Connection Error: ${error?.message || error}. Falling back to Local Memory Store.`);
+      cachedClient = null;
+      cachedDb = null;
+      return null;
+    } finally {
+      connectionPromise = null;
     }
-    await client.connect();
-    db = client.db();
-    isConnected = true;
-    hasFailed = false;
-    console.log('Successfully connected to MongoDB Atlas!');
-    return db;
-  } catch (error: any) {
-    console.warn(`MongoDB Connection Notice: ${error?.message || error}. Falling back to Local Memory Store.`);
-    isConnected = false;
-    hasFailed = true;
-    db = null;
-    return null;
-  }
+  })();
+
+  return connectionPromise;
 }
 
 export function isMongoConnected(): boolean {
-  return isConnected;
+  return !!cachedDb;
 }
+
