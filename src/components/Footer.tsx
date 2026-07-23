@@ -102,8 +102,8 @@ export default function Footer() {
                 </a>
               </li>
               <li>
-                <a href="#submissions" onClick={(e) => handleScrollToSection(e, '#submissions')} className="hover:text-white transition-colors">
-                  Sandboxed Sandbox
+                <a href="#features" onClick={(e) => handleScrollToSection(e, '#features')} className="hover:text-white transition-colors">
+                  Academy Features
                 </a>
               </li>
               <li>
