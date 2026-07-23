@@ -750,7 +750,7 @@ export default function AdminDashboardPage() {
                               .slice(0, 4);
 
                             return uniquePending.map((sub, idx) => (
-                              <div key={`admin-pending-${sub.id}-${idx}`} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-xl hover:bg-white transition-all">
+                              <div key={sub.id ? `admin-pending-${sub.id}-idx-${idx}` : `admin-pending-idx-${idx}`} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-xl hover:bg-white transition-all">
                                 <div>
                                   <h5 className="text-xs font-bold text-gray-900 leading-tight">{sub.assignmentTitle}</h5>
                                   <p className="text-[10px] text-gray-500 mt-0.5">By {sub.studentName} • {new Date(sub.submittedAt).toLocaleDateString()}</p>
@@ -984,7 +984,7 @@ export default function AdminDashboardPage() {
 
                       return filtered.map((sub, idx) => (
                         <div
-                          key={`admin-submission-${sub.id}-${idx}`}
+                          key={sub.id ? `admin-submission-${sub.id}-idx-${idx}` : `admin-submission-idx-${idx}`}
                           className="bg-gray-50/50 border border-gray-100 p-5 rounded-2xl flex flex-col gap-4 hover:bg-white hover:border-blue-100 transition-all shadow-xs"
                           id={`admin-sub-card-${sub.id}`}
                         >
@@ -1159,10 +1159,10 @@ export default function AdminDashboardPage() {
                         }
 
                         return filteredStudents.map((student, idx) => {
-                          const studentEmail = student.email || `temp-${idx}`;
+                          const studentEmail = student.email ? student.email.toLowerCase().trim() : `temp-${idx}`;
                           const enrolled = Array.from(new Set(student.enrolledCourses || []));
                           return (
-                            <tr key={`student-row-${studentEmail}-${idx}`} className="hover:bg-gray-50/50 transition-colors">
+                            <tr key={`student-row-${studentEmail}-idx-${idx}`} className="hover:bg-gray-50/50 transition-colors">
                               <td className="px-6 py-4 font-bold text-slate-900 flex items-center space-x-2.5">
                                 <div className="h-8 w-8 rounded-full bg-blue-50 text-primary-base flex items-center justify-center font-bold font-display border border-blue-100 text-xs">
                                   {student.name.charAt(0)}
@@ -1176,7 +1176,7 @@ export default function AdminDashboardPage() {
                                     <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full">No active pathways</span>
                                   ) : (
                                     enrolled.map((cid, cIdx) => (
-                                      <span key={`student-row-${studentEmail}-c-${cid}-${cIdx}`} className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-primary-base px-2 py-0.5 rounded-full border border-blue-100">
+                                      <span key={`student-row-${studentEmail}-c-${cid}-cidx-${cIdx}`} className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-primary-base px-2 py-0.5 rounded-full border border-blue-100">
                                         {cid}
                                       </span>
                                     ))
@@ -1234,7 +1234,7 @@ export default function AdminDashboardPage() {
 
                     return filteredCourses.map((course, idx) => (
                       <div
-                        key={`admin-manage-course-${course.id}-${idx}`}
+                        key={course.id ? `admin-manage-course-${course.id}-idx-${idx}` : `admin-manage-course-idx-${idx}`}
                         className="bg-white border border-gray-150 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between hover:shadow-md hover:border-blue-200 transition-all"
                         id={`admin-course-card-${course.id}`}
                       >
@@ -1318,7 +1318,7 @@ export default function AdminDashboardPage() {
                         }
 
                         return filteredUsers.map((user, idx) => (
-                          <tr key={`manage-user-row-${user.email}-${idx}`} className="hover:bg-gray-50/50 transition-colors">
+                          <tr key={user.email ? `manage-user-row-${user.email.toLowerCase().trim()}-idx-${idx}` : `manage-user-row-idx-${idx}`} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-4 font-bold text-slate-900">{user.name}</td>
                             <td className="px-6 py-4 font-mono text-gray-500">{user.email}</td>
                             <td className="px-6 py-4 font-mono text-gray-400">{user.password || 'Google Auth'}</td>
@@ -1441,7 +1441,7 @@ export default function AdminDashboardPage() {
                       {coursesList.map((c, idx) => {
                         const isEnrolled = studentForm.enrolledCourses.includes(c.id);
                         return (
-                          <label key={`modal-enroll-${c.id}-${idx}`} className="flex items-center space-x-2 text-xs text-gray-700 font-medium cursor-pointer">
+                          <label key={c.id ? `modal-enroll-${c.id}-idx-${idx}` : `modal-enroll-idx-${idx}`} className="flex items-center space-x-2 text-xs text-gray-700 font-medium cursor-pointer">
                             <input
                               type="checkbox"
                               checked={isEnrolled}

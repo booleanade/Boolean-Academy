@@ -77,14 +77,33 @@ export default function Dashboard() {
   const isAdmin = currentUser.role === 'admin';
 
   // --- STUDENT DATA COMPUTATIONS ---
-  const studentEnrolledIds = currentUser.enrolledCourses || [];
-  const studentEnrolledCourses = courses.filter((c) => studentEnrolledIds.includes(c.id));
-  const studentRecommendedCourses = courses.filter((c) => !studentEnrolledIds.includes(c.id));
+  const studentEnrolledIds = Array.from(new Set(currentUser.enrolledCourses || []));
+  
+  const seenEnrolled = new Set<string>();
+  const studentEnrolledCourses = courses.filter((c) => {
+    if (!studentEnrolledIds.includes(c.id) || seenEnrolled.has(c.id)) return false;
+    seenEnrolled.add(c.id);
+    return true;
+  });
 
-  // Submissions filtered for student
-  const studentSubmissions = submissions.filter(
-    (s) => s.studentName.toLowerCase() === currentUser.name.toLowerCase()
-  );
+  const seenRec = new Set<string>();
+  const studentRecommendedCourses = courses.filter((c) => {
+    if (studentEnrolledIds.includes(c.id) || seenRec.has(c.id)) return false;
+    seenRec.add(c.id);
+    return true;
+  });
+
+  // Submissions filtered & deduplicated for student
+  const seenSub = new Set<string>();
+  const studentSubmissions = submissions.filter((s) => {
+    const nameMatch = s.studentName && s.studentName.toLowerCase() === currentUser.name.toLowerCase();
+    const emailMatch = s.studentEmail && currentUser.email && s.studentEmail.toLowerCase() === currentUser.email.toLowerCase();
+    if (!nameMatch && !emailMatch) return false;
+    const subKey = s.id || `${s.assignmentTitle}-${s.submittedAt}`;
+    if (seenSub.has(subKey)) return false;
+    seenSub.add(subKey);
+    return true;
+  });
   const studentApprovedCount = studentSubmissions.filter((s) => s.status === 'Approved').length;
   const studentPendingCount = studentSubmissions.filter((s) => s.status === 'Pending').length;
   const studentChangesCount = studentSubmissions.filter((s) => s.status === 'Changes Requested').length;
@@ -655,7 +674,7 @@ export default function Dashboard() {
                                 .slice(0, 4);
 
                               return uniquePending.map((sub, idx) => (
-                                <div key={`admin-pending-${sub.id}-${idx}`} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-xl hover:bg-white transition-all">
+                                <div key={sub.id ? `admin-pending-${sub.id}-idx-${idx}` : `admin-pending-idx-${idx}`} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-xl hover:bg-white transition-all">
                                   <div>
                                     <h5 className="text-xs font-bold text-gray-900 leading-tight">{sub.assignmentTitle}</h5>
                                     <p className="text-[10px] text-gray-500 mt-0.5">By {sub.studentName} • {new Date(sub.submittedAt).toLocaleDateString()}</p>
@@ -712,7 +731,7 @@ export default function Dashboard() {
                             const percentage = Math.round((completed.length / course.syllabus.length) * 100);
                             
                             return (
-                              <div key={`student-enrolled-${course.id}-${courseIdx}`} className="border border-gray-100 p-5 rounded-2xl bg-gray-50/50 hover:bg-white transition-all space-y-4">
+                              <div key={course.id ? `student-enrolled-${course.id}-idx-${courseIdx}` : `student-enrolled-idx-${courseIdx}`} className="border border-gray-100 p-5 rounded-2xl bg-gray-50/50 hover:bg-white transition-all space-y-4">
                                 <div className="flex items-center justify-between">
                                   <div>
                                     <h4 className="text-sm font-extrabold text-gray-900">{course.title}</h4>
@@ -739,7 +758,7 @@ export default function Dashboard() {
                                       const isChecked = completed.includes(mod);
                                       return (
                                         <button
-                                          key={`milestone-${course.id}-${courseIdx}-${modIdx}-${mod}`}
+                                          key={`milestone-${course.id}-${modIdx}`}
                                           onClick={() => toggleModule(course.id, mod)}
                                           className="flex items-start text-left space-x-2 p-2 rounded-lg hover:bg-gray-50 transition-colors text-xs text-gray-700 cursor-pointer"
                                         >
@@ -820,7 +839,7 @@ export default function Dashboard() {
 
                       <div className="space-y-3.5 pt-2">
                         {studentRecommendedCourses.map((rec, idx) => (
-                          <div key={`student-rec-${rec.id}-${idx}`} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:border-gray-200 transition-all">
+                          <div key={rec.id ? `student-rec-${rec.id}-idx-${idx}` : `student-rec-idx-${idx}`} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:border-gray-200 transition-all">
                             <div className="space-y-0.5">
                               <span className="text-[9px] font-bold text-accent-orange uppercase tracking-wider">{rec.category}</span>
                               <h4 className="text-xs font-bold text-gray-900">{rec.title}</h4>
@@ -895,7 +914,7 @@ export default function Dashboard() {
                   const percentage = Math.round((completed.length / course.syllabus.length) * 100);
 
                   return (
-                    <div key={`course-card-${course.id}-${courseIdx}`} className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div key={course.id ? `course-card-${course.id}-idx-${courseIdx}` : `course-card-idx-${courseIdx}`} className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
                       
                       {/* Course header banner */}
                       <div 
@@ -926,7 +945,7 @@ export default function Dashboard() {
                               const isChecked = completed.includes(mod);
                               return (
                                 <div
-                                  key={`syllabus-${course.id}-${courseIdx}-${modIdx}-${mod}`}
+                                  key={`syllabus-${course.id}-${modIdx}`}
                                   className={`flex items-start text-xs p-2.5 rounded-xl border transition-all ${
                                     isChecked
                                       ? 'bg-emerald-50/40 border-emerald-100 text-slate-700'
@@ -1181,7 +1200,7 @@ export default function Dashboard() {
                     ) : (
                       studentSubmissions.map((sub, idx) => (
                         <div
-                          key={`submit-queue-${sub.id}-${idx}`}
+                          key={sub.id ? `submit-queue-${sub.id}-idx-${idx}` : `submit-queue-idx-${idx}`}
                           className="bg-white border border-gray-100 p-5 rounded-2xl shadow-sm flex flex-col gap-3"
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -1347,7 +1366,7 @@ export default function Dashboard() {
 
                         return (
                           <div
-                            key={`grade-item-${sub.id}-${idx}`}
+                            key={sub.id ? `grade-item-${sub.id}-idx-${idx}` : `grade-item-idx-${idx}`}
                             className="flex flex-col p-4 border border-gray-100 rounded-2xl bg-gray-50/50 hover:bg-white hover:shadow-xs transition-all gap-3"
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1429,7 +1448,7 @@ export default function Dashboard() {
                 ) : (
                   filteredGithubSubmissions.map((sub, idx) => (
                     <div
-                      key={`github-link-card-${sub.id}-${idx}`}
+                      key={sub.id ? `github-link-card-${sub.id}-idx-${idx}` : `github-link-card-idx-${idx}`}
                       className="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow gap-5"
                     >
                       <div className="space-y-3">
@@ -1530,7 +1549,7 @@ export default function Dashboard() {
                 ) : (
                   filteredVercelSubmissions.map((sub, idx) => (
                     <div
-                      key={`vercel-link-card-${sub.id}-${idx}`}
+                      key={sub.id ? `vercel-link-card-${sub.id}-idx-${idx}` : `vercel-link-card-idx-${idx}`}
                       className="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow gap-5"
                     >
                       <div className="space-y-3">

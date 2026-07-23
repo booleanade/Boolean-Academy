@@ -94,10 +94,24 @@ async function parseResponseJson(res: Response) {
   }
   try {
     const text = await res.text();
+    try {
+      const parsedJson = JSON.parse(text);
+      if (parsedJson && (parsedJson.error || parsedJson.message)) {
+        return parsedJson;
+      }
+    } catch {
+      // ignore
+    }
     const match = text.match(/<title>(.*?)<\/title>/i);
     const title = match ? match[1] : '';
+    if (res.status === 403) {
+      return { error: 'Access Denied: Account role does not match the selected login mode. Please switch roles and try again.' };
+    }
     return { error: title ? `Server Error: ${title}` : `Server returned status ${res.status}` };
   } catch (e) {
+    if (res.status === 403) {
+      return { error: 'Access Denied: Account role does not match the selected login mode. Please switch roles and try again.' };
+    }
     return { error: `Server returned status ${res.status}` };
   }
 }
@@ -131,7 +145,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Toast State and Trigger
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    const id = Date.now();
+    const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     setToast({ id, message, type });
     setTimeout(() => {
       setToast((current) => (current && current.id === id ? null : current));
@@ -279,7 +293,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (existing) {
         const parsed = JSON.parse(existing);
         if (parsed.email.toLowerCase() === email.toLowerCase()) {
-          return { success: false, error: `Registration failed. An account with this email is already registered as a ${parsed.role}.` };
+          const currentRoleLabel = parsed.role === 'admin' ? 'Admin' : 'Student';
+          const attemptedRoleLabel = role === 'admin' ? 'Admin' : 'Student';
+          return {
+            success: false,
+            error: `Registration failed: This account (${email}) is already registered in the system as a ${currentRoleLabel} account. An account registered as a ${currentRoleLabel} cannot be registered or logged in as an ${attemptedRoleLabel} account.`
+          };
         }
       }
 
@@ -296,14 +315,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginUser = async (email: string, role?: 'student' | 'admin', password?: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
+    const normEmail = email.toLowerCase().trim();
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, role, password })
+        body: JSON.stringify({ email: normEmail, role, password })
       });
       const data = await parseResponseJson(res);
       if (res.ok && data.success && data.user) {
+        if (role && data.user.role !== role) {
+          setIsLoading(false);
+          const currentRoleLabel = data.user.role === 'admin' ? 'Admin' : 'Student';
+          const attemptedRoleLabel = role === 'admin' ? 'Admin' : 'Student';
+          return {
+            success: false,
+            error: `Access Denied: This account (${email}) is registered as a ${currentRoleLabel} account, not an ${attemptedRoleLabel} account. Please switch to ${currentRoleLabel} mode to log in.`
+          };
+        }
         setCurrentUser(data.user);
         localStorage.setItem('boolean_user', JSON.stringify(data.user));
         setIsLoading(false);
@@ -311,10 +341,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: true };
       } else {
         setIsLoading(false);
-        let errorMsg = data.error || 'Login failed';
-        if (res.status === 403 || errorMsg.toLowerCase().includes('403') || errorMsg.toLowerCase().includes('forbidden') || errorMsg.toLowerCase().includes('access denied')) {
-          errorMsg = `Access Denied: Your account's registered role does not match the selected login mode (${role === 'admin' ? 'Admin' : 'Student'}). Please select the correct role (Student or Admin) and try again.`;
-        }
+        const errorMsg = data.error || 'Login failed';
         return { success: false, error: errorMsg };
       }
     } catch (err) {
@@ -324,20 +351,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Offline Local Storage Fallback (only allow if they exist in localStorage)
     const existing = localStorage.getItem('boolean_user');
     if (existing) {
-      const parsed = JSON.parse(existing);
-      if (parsed.email.toLowerCase() === email.toLowerCase()) {
-        if (password && parsed.password && parsed.password !== password) {
+      try {
+        const parsed = JSON.parse(existing);
+        if (parsed && parsed.email && parsed.email.toLowerCase() === normEmail) {
+          if (password && parsed.password && parsed.password !== password) {
+            setIsLoading(false);
+            return { success: false, error: 'Invalid password. Please try again.' };
+          }
+          if (role && parsed.role && parsed.role !== role) {
+            setIsLoading(false);
+            const currentRoleLabel = parsed.role === 'admin' ? 'Admin' : 'Student';
+            const attemptedRoleLabel = role === 'admin' ? 'Admin' : 'Student';
+            return {
+              success: false,
+              error: `Access Denied: This account (${email}) is registered as a ${currentRoleLabel} account, not an ${attemptedRoleLabel} account. Please switch to ${currentRoleLabel} mode to log in.`
+            };
+          }
+          setCurrentUser(parsed);
           setIsLoading(false);
-          return { success: false, error: 'Invalid password. Please try again.' };
+          showToast(`Welcome back, ${parsed.name}! Successfully logged in offline.`, 'success');
+          return { success: true };
         }
-        if (role && parsed.role !== role) {
-          setIsLoading(false);
-          return { success: false, error: `Access Denied: Your account's registered role does not match the selected login mode (${role === 'admin' ? 'Admin' : 'Student'}). Please select the correct role (Student or Admin) and try again.` };
-        }
-        setCurrentUser(parsed);
-        setIsLoading(false);
-        showToast(`Welcome back, ${parsed.name}! Successfully logged in offline.`, 'success');
-        return { success: true };
+      } catch (e) {
+        // ignore
       }
     }
 
@@ -355,6 +391,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
       const data = await parseResponseJson(res);
       if (res.ok && data.success && data.user) {
+        if (role && data.user.role !== role) {
+          setIsLoading(false);
+          const currentRoleLabel = data.user.role === 'admin' ? 'Admin' : 'Student';
+          const attemptedRoleLabel = role === 'admin' ? 'Admin' : 'Student';
+          return {
+            success: false,
+            error: `Access Denied: This account is registered as a ${currentRoleLabel} account, not an ${attemptedRoleLabel} account. Please select ${currentRoleLabel} mode to sign in.`
+          };
+        }
         setCurrentUser(data.user);
         localStorage.setItem('boolean_user', JSON.stringify(data.user));
         setIsLoading(false);
@@ -362,32 +407,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: true };
       } else {
         setIsLoading(false);
-        let errorMsg = data.error || 'Google authentication failed.';
-        if (res.status === 403 || errorMsg.toLowerCase().includes('403') || errorMsg.toLowerCase().includes('forbidden') || errorMsg.toLowerCase().includes('access denied')) {
-          errorMsg = `Access Denied: Your Google account's registered role does not match the selected login mode (${role === 'admin' ? 'Admin' : 'Student'}). Please select the correct role (Student or Admin) and try again.`;
-        }
+        const errorMsg = data.error || 'Google authentication failed.';
         return { success: false, error: errorMsg };
       }
     } catch (err) {
       console.error('Google Auth API failed:', err);
       // Fallback using simulation logic if offline
-      const email = credential.includes('@') ? credential : 'google-user@gmail.com';
-      const name = email.split('@')[0];
-      const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
+      const email = credential.includes('@') ? credential.trim().toLowerCase() : 'google-user@gmail.com';
+      const normEmail = email.toLowerCase().trim();
+      const isAuthorizedAdmin = normEmail === 'admin@booleanacademy.edu' || normEmail.endsWith('@booleanacademy.edu');
 
       const existing = localStorage.getItem('boolean_user');
       if (existing) {
-        const parsed = JSON.parse(existing);
-        if (parsed.email.toLowerCase() === email.toLowerCase()) {
-          if (role && parsed.role !== role) {
+        try {
+          const parsed = JSON.parse(existing);
+          if (parsed && parsed.email && parsed.email.toLowerCase() === normEmail) {
+            if (role && parsed.role && parsed.role !== role) {
+              setIsLoading(false);
+              const currentRoleLabel = parsed.role === 'admin' ? 'Admin' : 'Student';
+              const attemptedRoleLabel = role === 'admin' ? 'Admin' : 'Student';
+              return {
+                success: false,
+                error: `Access Denied: The Google account (${email}) is a ${currentRoleLabel} account, not an ${attemptedRoleLabel} account. Please switch to ${currentRoleLabel} mode to sign in.`
+              };
+            }
+            setCurrentUser(parsed);
             setIsLoading(false);
-            return { success: false, error: `Access Denied: Your Google account's registered role does not match the selected login mode (${role === 'admin' ? 'Admin' : 'Student'}). Please select the correct role (Student or Admin) and try again.` };
+            showToast(`Welcome back, ${parsed.name}! Signed in with Google (Offline mode).`, 'success');
+            return { success: true };
           }
-          setCurrentUser(parsed);
-          setIsLoading(false);
-          showToast(`Welcome back, ${parsed.name}! Signed in with Google (Offline mode).`, 'success');
-          return { success: true };
+        } catch (e) {
+          // ignore
         }
+      }
+
+      if (role === 'admin' && !isAuthorizedAdmin) {
+        setIsLoading(false);
+        return {
+          success: false,
+          error: `Access Denied: The Google account (${email}) is a Student account and is not authorized for Admin access. Please switch to Student mode to sign in.`
+        };
       }
 
       setIsLoading(false);

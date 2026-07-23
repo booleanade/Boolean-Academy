@@ -46,62 +46,67 @@ app.post('/api/auth/google', async (req, res) => {
   let name: string = '';
   let googleId: string = '';
 
-  // 1. If credential is a JWT (3 dot-separated parts), verify via Google tokeninfo endpoint
+  // 1. If credential is a JWT (3 dot-separated parts), safely verify & decode
   const isJwt = typeof credential === 'string' && credential.split('.').length === 3;
   if (isJwt) {
+    let isParsableJwt = false;
+    let decodedPayload: any = null;
+
     try {
-      const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-      if (tokenInfoRes.ok) {
-        const data = await tokenInfoRes.json();
-        if (data.email) {
-          email = data.email.toLowerCase();
-          name = data.name || data.given_name || (email ? email.split('@')[0] : '');
-          googleId = data.sub || `google-${email}`;
+      const parts = credential.split('.');
+      const base64Url = parts[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
+      decodedPayload = JSON.parse(jsonPayload);
+      if (decodedPayload && typeof decodedPayload === 'object') {
+        isParsableJwt = true;
+        if (decodedPayload.email) {
+          email = String(decodedPayload.email).toLowerCase();
+          name = decodedPayload.name || decodedPayload.given_name || (email ? email.split('@')[0] : '');
+          googleId = decodedPayload.sub || `google-${email}`;
         }
       }
-    } catch (err) {
-      console.warn('Google tokeninfo endpoint check error:', err);
+    } catch {
+      // Non-JSON or corrupt token payload - continue safely to fallback handlers
     }
 
-    // 1b. Fallback to OAuth2Client verifyIdToken if tokeninfo didn't populate email
-    if (!email && oauthClient && googleClientId) {
+    // Try Google tokeninfo endpoint verification if token is a parsable JWT
+    if (isParsableJwt) {
       try {
-        const ticket = await oauthClient.verifyIdToken({
-          idToken: credential,
-          audience: googleClientId,
-        });
-        const payload = ticket.getPayload();
-        if (payload && payload.email) {
-          email = payload.email.toLowerCase();
-          name = payload.name || payload.given_name || (email ? email.split('@')[0] : '');
-          googleId = payload.sub || `google-${email}`;
-        }
-      } catch (err) {
-        console.warn('Real Google Verification fallback failed:', err);
-      }
-    }
-
-    // 1c. Direct JWT base64 payload decode fallback
-    if (!email) {
-      try {
-        const parts = credential.split('.');
-        if (parts.length === 3) {
-          const base64Url = parts[1];
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
-          const decoded = JSON.parse(jsonPayload);
-          if (decoded.email) {
-            email = decoded.email.toLowerCase();
-            name = decoded.name || decoded.given_name || (email ? email.split('@')[0] : '');
-            googleId = decoded.sub || `google-${email}`;
+        const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+        if (tokenInfoRes.ok) {
+          const data = await tokenInfoRes.json();
+          if (data.email) {
+            email = String(data.email).toLowerCase();
+            name = data.name || data.given_name || (email ? email.split('@')[0] : '');
+            googleId = data.sub || `google-${email}`;
           }
         }
-      } catch (e) {
-        console.error('Fallback JWT decode error:', e);
+      } catch {
+        // Silently catch tokeninfo fetch errors
+      }
+
+      // Fallback to OAuth2Client verifyIdToken if tokeninfo didn't populate email
+      if (!email && oauthClient && googleClientId) {
+        try {
+          const ticket = await oauthClient.verifyIdToken({
+            idToken: credential,
+            audience: googleClientId,
+          });
+          const payload = ticket.getPayload();
+          if (payload && payload.email) {
+            email = payload.email.toLowerCase();
+            name = payload.name || payload.given_name || (email ? email.split('@')[0] : '');
+            googleId = payload.sub || `google-${email}`;
+          }
+        } catch {
+          // Silently catch token envelope / signature mismatch errors
+        }
       }
     }
   }
 
+  // 2. If email is not populated yet, check if credential is an email address string
   if (!email && typeof credential === 'string' && credential.includes('@')) {
     email = credential.trim().toLowerCase();
     name = email.split('@')[0];
@@ -115,22 +120,36 @@ app.post('/api/auth/google', async (req, res) => {
 
   try {
     // Look up user or create new one
-    let user = await store.findUserByEmail(email);
-    const resolvedRole = role || 'student';
+    const normEmail = email.toLowerCase().trim();
+    let user = await store.findUserByEmail(normEmail);
 
-    if (!user) {
+    const isAuthorizedAdmin = normEmail === 'admin@booleanacademy.edu' || normEmail.endsWith('@booleanacademy.edu');
+    const targetRole = (role || 'student') as 'student' | 'admin';
+
+    if (user) {
+      // If user already exists in system, verify selected role matches account role
+      if (user.role !== targetRole) {
+        const currentRoleLabel = user.role === 'admin' ? 'Admin' : 'Student';
+        const attemptedRoleLabel = targetRole === 'admin' ? 'Admin' : 'Student';
+        return res.status(403).json({
+          error: `Access Denied: The Google account (${email}) is a ${currentRoleLabel} account, not an ${attemptedRoleLabel} account. Please switch to ${currentRoleLabel} mode to sign in.`
+        });
+      }
+    } else {
+      // User does not exist in system
+      if (targetRole === 'admin' && !isAuthorizedAdmin) {
+        return res.status(403).json({
+          error: `Access Denied: The Google account (${email}) is a Student account and is not authorized for Admin access. Please switch to Student mode to sign in.`
+        });
+      }
+
       user = {
         name,
-        email,
+        email: normEmail,
         enrolledCourses: [],
-        role: resolvedRole
+        role: isAuthorizedAdmin ? 'admin' : 'student'
       };
       await store.saveUser(user, googleId);
-    } else {
-      // User exists, verify role matches
-      if (role && user.role !== role) {
-        return res.status(403).json({ error: `Access Denied: Your Google account (${email}) is registered as a ${user.role.toUpperCase()}. You selected "${role.toUpperCase()}" mode. Please select "${user.role.toUpperCase()}" role mode to sign in.` });
-      }
     }
 
     res.json({ success: true, user });
@@ -148,9 +167,27 @@ app.post('/api/auth/register', async (req, res) => {
   }
 
   try {
-    const existingUser = await store.findUserByEmail(email);
+    const normEmail = email.toLowerCase().trim();
+    const isAuthorizedAdmin = normEmail === 'admin@booleanacademy.edu' || normEmail.endsWith('@booleanacademy.edu');
+
+    if (role === 'admin' && !isAuthorizedAdmin) {
+      return res.status(403).json({
+        error: `Registration failed: The email (${email}) is not authorized for Admin account registration. Only authorized academy administrator accounts can be registered as Admin.`
+      });
+    }
+
+    const existingUser = await store.findUserByEmail(normEmail);
     if (existingUser) {
-      return res.status(400).json({ error: `Registration failed. An account with this email is already registered as a ${existingUser.role}.` });
+      const currentRoleLabel = existingUser.role === 'admin' ? 'Admin' : 'Student';
+      const attemptedRoleLabel = role === 'admin' ? 'Admin' : 'Student';
+      if (existingUser.role !== role) {
+        return res.status(400).json({
+          error: `Registration failed: This account (${email}) is already registered in the system as a ${currentRoleLabel} account. An account registered as a ${currentRoleLabel} cannot be registered or logged in as an ${attemptedRoleLabel} account.`
+        });
+      }
+      return res.status(400).json({
+        error: `Registration failed: An account with email "${email}" is already registered as a ${currentRoleLabel} account. Please log in directly.`
+      });
     }
 
     const newUser: User = {
@@ -186,8 +223,13 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid password. Please try again.' });
       }
 
-      if (role && user.role !== role) {
-        return res.status(403).json({ error: `Access Denied: Your account's registered role does not match the selected login mode (${role === 'admin' ? 'Admin' : 'Student'}). Please select the correct role (Student or Admin) and try again.` });
+      const targetRole = (role || 'student') as 'student' | 'admin';
+      if (user.role !== targetRole) {
+        const currentRoleLabel = user.role === 'admin' ? 'Admin' : 'Student';
+        const attemptedRoleLabel = targetRole === 'admin' ? 'Admin' : 'Student';
+        return res.status(403).json({
+          error: `Access Denied: This account (${email}) is registered as a ${currentRoleLabel} account, not an ${attemptedRoleLabel} account. Please switch to ${currentRoleLabel} mode to log in.`
+        });
       }
       res.json({ success: true, user });
     } else {

@@ -83,13 +83,21 @@ export default function Courses() {
         {/* Courses Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           <AnimatePresence mode="popLayout">
-            {filteredCourses.map((course, index) => {
-              const isEnrolled = currentUser?.enrolledCourses.includes(course.id) || false;
+            {(() => {
+              const seen = new Set<string>();
+              const uniqueCourses = filteredCourses.filter(c => {
+                const cid = c.id || c.title;
+                if (seen.has(cid)) return false;
+                seen.add(cid);
+                return true;
+              });
+              return uniqueCourses.map((course, index) => {
+                const isEnrolled = currentUser?.enrolledCourses.includes(course.id) || false;
 
-              return (
-                <motion.div
-                  key={`filtered-course-${course.id}-${index}`}
-                  layout
+                return (
+                  <motion.div
+                    key={course.id ? `course-item-${course.id}-idx-${index}` : `course-item-idx-${index}`}
+                    layout
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
@@ -173,8 +181,9 @@ export default function Courses() {
                   </div>
                 </motion.div>
               );
-            })}
-          </AnimatePresence>
+            });
+          })()}
+        </AnimatePresence>
         </div>
 
         {/* Empty state search result */}

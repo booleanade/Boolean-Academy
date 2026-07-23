@@ -50,7 +50,7 @@ export default function Statistics() {
             const IconComponent = stat.icon;
             return (
               <motion.div
-                key={stat.id}
+                key={`stat-${stat.id}-${index}`}
                 initial={{ opacity: 0, y: 15 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: '-50px' }}

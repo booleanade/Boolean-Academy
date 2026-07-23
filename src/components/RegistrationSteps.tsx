@@ -91,7 +91,7 @@ export default function RegistrationSteps() {
 
               return (
                 <motion.div
-                  key={step.id}
+                  key={`step-${step.id}-${index}`}
                   initial={{ opacity: 0, y: 15 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: '-50px' }}

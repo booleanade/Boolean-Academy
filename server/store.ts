@@ -146,10 +146,16 @@ async function seedMongoIfEmpty() {
           console.log('Seeding MongoDB with default accounts...');
           await usersCol.insertMany(memoryUsers);
         } else {
-          // Robust cleanup: ensure Blessing starts with no mock enrolled courses
+          // Robust cleanup: ensure default accounts maintain their strict canonical roles
           await usersCol.updateOne(
             { email: 'blessingadeya@gmail.com' },
-            { $set: { enrolledCourses: [] } }
+            { $set: { role: 'student', enrolledCourses: [] } },
+            { upsert: true }
+          );
+          await usersCol.updateOne(
+            { email: 'admin@booleanacademy.edu' },
+            { $set: { role: 'admin' } },
+            { upsert: true }
           );
         }
 
@@ -173,50 +179,80 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   const db = await getDb();
   const normalizedEmail = email.toLowerCase().trim();
 
+  // Canonical role overrides for default accounts
+  let canonicalRole: 'student' | 'admin' | null = null;
+  if (normalizedEmail === 'blessingadeya@gmail.com') {
+    canonicalRole = 'student';
+  } else if (normalizedEmail === 'admin@booleanacademy.edu') {
+    canonicalRole = 'admin';
+  }
+
   if (db) {
     await seedMongoIfEmpty();
     const col = db.collection('users');
-    const doc = await col.findOne({ email: normalizedEmail });
+    const safeRegex = `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+    const doc = await col.findOne({ email: { $regex: safeRegex, $options: 'i' } });
     if (doc) {
+      const role = canonicalRole || (doc.role as 'student' | 'admin') || 'student';
       return {
         name: doc.name,
-        email: doc.email,
+        email: doc.email.toLowerCase().trim(),
         enrolledCourses: doc.enrolledCourses || [],
-        role: doc.role as 'student' | 'admin',
+        role: role,
         password: doc.password
       };
+    }
+    if (canonicalRole) {
+      const defaultUser = memoryUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+      if (defaultUser) return { ...defaultUser, role: canonicalRole };
     }
     return null;
   } else {
     const user = memoryUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-    return user || null;
+    if (user) {
+      return {
+        ...user,
+        role: canonicalRole || user.role
+      };
+    }
+    return null;
   }
 }
 
 export async function saveUser(user: User, googleId?: string): Promise<User> {
   const db = await getDb();
-  const normalizedUser = {
+  const normalizedEmail = user.email.toLowerCase().trim();
+
+  let canonicalRole: 'student' | 'admin' | null = null;
+  if (normalizedEmail === 'blessingadeya@gmail.com') {
+    canonicalRole = 'student';
+  } else if (normalizedEmail === 'admin@booleanacademy.edu') {
+    canonicalRole = 'admin';
+  }
+
+  const normalizedUser: User = {
     ...user,
-    email: user.email.toLowerCase().trim()
+    email: normalizedEmail,
+    role: canonicalRole || user.role
   };
 
   if (db) {
     await seedMongoIfEmpty();
     const col = db.collection('users');
     await col.updateOne(
-      { email: normalizedUser.email },
+      { email: { $regex: `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
       { $set: { ...normalizedUser, ...(googleId ? { googleId } : {}) } },
       { upsert: true }
     );
-    return user;
+    return normalizedUser;
   } else {
-    const index = memoryUsers.findIndex(u => u.email.toLowerCase() === normalizedUser.email);
+    const index = memoryUsers.findIndex(u => u.email.toLowerCase() === normalizedEmail);
     if (index >= 0) {
       memoryUsers[index] = normalizedUser;
     } else {
       memoryUsers.push(normalizedUser);
     }
-    return user;
+    return normalizedUser;
   }
 }
 

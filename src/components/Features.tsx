@@ -82,7 +82,7 @@ export default function Features() {
             const IconComp = feat.icon;
             return (
               <motion.div
-                key={feat.id}
+                key={`feature-${feat.id}-${index}`}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: '-40px' }}

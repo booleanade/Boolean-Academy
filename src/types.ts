@@ -41,7 +41,7 @@ export interface User {
 }
 
 export interface ToastMessage {
-  id: number;
+  id: number | string;
   message: string;
   type: 'success' | 'error' | 'info';
 }

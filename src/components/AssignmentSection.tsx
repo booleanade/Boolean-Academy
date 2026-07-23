@@ -351,14 +351,15 @@ export default function AssignmentSection() {
               <AnimatePresence mode="popLayout">
                 {(() => {
                   const seen = new Set<string>();
-                  const uniqueSubmissions = submissions.filter((sub) => {
-                    if (seen.has(sub.id)) return false;
-                    seen.add(sub.id);
+                  const uniqueSubmissions = submissions.filter((sub, idx) => {
+                    const keyToTrack = sub.id || `sub-idx-${idx}`;
+                    if (seen.has(keyToTrack)) return false;
+                    seen.add(keyToTrack);
                     return true;
                   });
                   return uniqueSubmissions.map((sub, idx) => (
                     <motion.div
-                      key={`submission-${sub.id}-${idx}`}
+                      key={sub.id ? `submission-${sub.id}-idx-${idx}` : `submission-idx-${idx}`}
                       layout
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}

@@ -100,7 +100,10 @@ export default function Modals() {
           prompt: 'select_account',
           callback: async (tokenResponse: any) => {
             if (tokenResponse?.error) {
-              console.error('Google OAuth token error:', tokenResponse.error);
+              console.log('Google OAuth token error:', tokenResponse.error);
+              if (tokenResponse.error === 'popup_closed' || tokenResponse.error === 'user_logged_out') {
+                return; // Silent return when user closes popup window
+              }
               if (tokenResponse.error === 'origin_mismatch' || tokenResponse.error_description?.includes('origin')) {
                 setErrorMsg(`Origin Mismatch Error (400): '${window.location.origin}' is not authorized in Google Cloud Console for Client ID '${clientId}'. Ensure '${window.location.origin}' is added under 'Authorized JavaScript origins'.`);
                 setShowClientIdConfig(true);
@@ -137,8 +140,16 @@ export default function Modals() {
             }
           },
           error_callback: (err: any) => {
-            console.error('Google OAuth client error:', err);
-            setErrorMsg(`Google OAuth Error (${err.type || 'origin_mismatch'}): Make sure '${window.location.origin}' is added under Authorized JavaScript origins in Google Cloud Console.`);
+            console.log('Google OAuth client event:', err);
+            if (err?.type === 'popup_closed' || err === 'popup_closed') {
+              // User intentionally closed the popup window, do not treat as error
+              return;
+            }
+            if (err?.type === 'popup_blocked') {
+              setErrorMsg('Google Sign-In popup was blocked by your browser. Please allow popups for this site.');
+              return;
+            }
+            setErrorMsg(`Google OAuth Error (${err?.type || 'origin_mismatch'}): Make sure '${window.location.origin}' is added under Authorized JavaScript origins in Google Cloud Console.`);
             setShowClientIdConfig(true);
           }
         });
@@ -194,6 +205,8 @@ export default function Modals() {
                   setLoginOpen(false);
                   setRegisterOpen(false);
                   navigate('/dashboard');
+                } else {
+                  setErrorMsg(res.error || 'Google authentication failed.');
                 }
               }
             }
@@ -241,21 +254,16 @@ export default function Modals() {
             googleObj.accounts.id.initialize({
               client_id: activeClientId,
               callback: handleCredential,
-              auto_select: false
+              auto_select: false,
+              use_fedcm_for_prompt: false
             });
 
+            // Render Google Sign-In button
             container.innerHTML = '';
             googleObj.accounts.id.renderButton(
               container,
               { theme: 'outline', size: 'large', width: 320 }
             );
-
-            // Attempt One Tap prompt
-            try {
-              googleObj.accounts.id.prompt();
-            } catch (e) {
-              // Ignore prompt suppressed warnings
-            }
           } catch (err) {
             console.error('Failed to render Google button:', err);
           }
@@ -401,46 +409,6 @@ export default function Modals() {
                   </div>
                 )}
 
-                {/* Google Sign In option */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMsg('');
-                    setGoogleRole(regRole);
-                    setGoogleMode('signup');
-                    setIsGoogleOpen(true);
-                    setTimeout(() => triggerGoogleOAuthPopup(), 100);
-                  }}
-                  className="w-full flex items-center justify-center space-x-2.5 py-3 px-4 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-semibold text-gray-700 shadow-sm transition-all duration-150 cursor-pointer"
-                  id="btn-register-google"
-                >
-                  <svg className="h-4.5 w-4.5 flex-shrink-0" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
-                  </svg>
-                  <span>Sign up with Google</span>
-                </button>
-
-                <div className="relative flex items-center py-1">
-                  <div className="flex-grow border-t border-gray-100"></div>
-                  <span className="flex-shrink mx-4 text-xs text-gray-400 font-bold uppercase tracking-wider">or email signup</span>
-                  <div className="flex-grow border-t border-gray-100"></div>
-                </div>
-
                 <form onSubmit={handleRegister} className="space-y-4">
                   {/* Role Selector */}
                   <div>
@@ -541,6 +509,46 @@ export default function Modals() {
                   </button>
                 </form>
 
+                <div className="relative flex items-center py-1">
+                  <div className="flex-grow border-t border-gray-100"></div>
+                  <span className="flex-shrink mx-4 text-xs text-gray-400 font-bold uppercase tracking-wider">or sign up with google</span>
+                  <div className="flex-grow border-t border-gray-100"></div>
+                </div>
+
+                {/* Google Sign In option */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg('');
+                    setGoogleRole(regRole);
+                    setGoogleMode('signup');
+                    setIsGoogleOpen(true);
+                    setTimeout(() => triggerGoogleOAuthPopup(), 100);
+                  }}
+                  className="w-full flex items-center justify-center space-x-2.5 py-3 px-4 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-semibold text-gray-700 shadow-sm transition-all duration-150 cursor-pointer"
+                  id="btn-register-google"
+                >
+                  <svg className="h-4.5 w-4.5 flex-shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  <span>Sign up with Google</span>
+                </button>
+
                 <div className="text-center text-sm text-gray-500 pt-2 border-t border-gray-100">
                   Already have an account?{' '}
                   <button
@@ -598,50 +606,23 @@ export default function Modals() {
                 </div>
 
                 {errorMsg && (
-                  <div className="p-3 bg-red-50 border border-red-100 text-red-700 text-xs rounded-xl font-medium">
-                    {errorMsg}
+                  <div className="p-3 bg-red-50 border border-red-100 text-red-700 text-xs rounded-xl font-medium space-y-2">
+                    <p>{errorMsg}</p>
+                    {(errorMsg.toLowerCase().includes('registered as a') || errorMsg.toLowerCase().includes('access denied') || errorMsg.toLowerCase().includes('not an admin account') || errorMsg.toLowerCase().includes('not a student account')) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginRole(loginRole === 'admin' ? 'student' : 'admin');
+                          setErrorMsg('');
+                        }}
+                        className="text-primary-base font-bold underline hover:text-blue-700 transition-colors cursor-pointer block mt-1 text-left"
+                        id="btn-switch-login-role"
+                      >
+                        Switch login mode to {loginRole === 'admin' ? 'Student' : 'Admin'} and try again →
+                      </button>
+                    )}
                   </div>
                 )}
-
-                {/* Google Sign In option */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMsg('');
-                    setGoogleRole(loginRole);
-                    setGoogleMode('signin');
-                    setIsGoogleOpen(true);
-                    setTimeout(() => triggerGoogleOAuthPopup(), 100);
-                  }}
-                  className="w-full flex items-center justify-center space-x-2.5 py-3 px-4 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-semibold text-gray-700 shadow-sm transition-all duration-150 cursor-pointer"
-                  id="btn-login-google"
-                >
-                  <svg className="h-4.5 w-4.5 flex-shrink-0" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
-                  </svg>
-                  <span>Sign in with Google</span>
-                </button>
-
-                <div className="relative flex items-center py-1">
-                  <div className="flex-grow border-t border-gray-100"></div>
-                  <span className="flex-shrink mx-4 text-xs text-gray-400 font-bold uppercase tracking-wider">or email login</span>
-                  <div className="flex-grow border-t border-gray-100"></div>
-                </div>
 
                 <form onSubmit={handleLogin} className="space-y-4">
                   {/* Role Selector */}
@@ -721,6 +702,46 @@ export default function Modals() {
                     {loginRole === 'admin' ? 'Login Admin' : 'Login Student'}
                   </button>
                 </form>
+
+                <div className="relative flex items-center py-1">
+                  <div className="flex-grow border-t border-gray-100"></div>
+                  <span className="flex-shrink mx-4 text-xs text-gray-400 font-bold uppercase tracking-wider">or sign in with google</span>
+                  <div className="flex-grow border-t border-gray-100"></div>
+                </div>
+
+                {/* Google Sign In option */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg('');
+                    setGoogleRole(loginRole);
+                    setGoogleMode('signin');
+                    setIsGoogleOpen(true);
+                    setTimeout(() => triggerGoogleOAuthPopup(), 100);
+                  }}
+                  className="w-full flex items-center justify-center space-x-2.5 py-3 px-4 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-semibold text-gray-700 shadow-sm transition-all duration-150 cursor-pointer"
+                  id="btn-login-google"
+                >
+                  <svg className="h-4.5 w-4.5 flex-shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  <span>Sign in with Google</span>
+                </button>
 
                 <div className="text-center text-sm text-gray-500 pt-2 border-t border-gray-100">
                   Don't have a profile yet?{' '}
@@ -927,7 +948,22 @@ export default function Modals() {
                 {errorMsg && (
                   <div className="p-3 bg-red-50 border border-red-100 text-red-700 text-xs rounded-xl font-medium text-left space-y-2">
                     <p>{errorMsg}</p>
-                    {(errorMsg.toLowerCase().includes('already registered') || errorMsg.toLowerCase().includes('already exists') || errorMsg.toLowerCase().includes('google sign-in')) && (
+                    {(errorMsg.toLowerCase().includes('registered as a') || errorMsg.toLowerCase().includes('access denied') || errorMsg.toLowerCase().includes('not an admin') || errorMsg.toLowerCase().includes('not a student') || errorMsg.toLowerCase().includes('mode to sign in')) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetRole = googleRole === 'admin' ? 'student' : 'admin';
+                          setGoogleRole(targetRole);
+                          setLoginRole(targetRole);
+                          setErrorMsg('');
+                        }}
+                        className="text-primary-base font-bold underline hover:text-blue-700 transition-colors cursor-pointer block mt-1 text-left"
+                        id="btn-switch-google-role"
+                      >
+                        Switch role to {googleRole === 'admin' ? 'Student' : 'Admin'} and try again →
+                      </button>
+                    )}
+                    {(errorMsg.toLowerCase().includes('already registered') || errorMsg.toLowerCase().includes('already exists') || errorMsg.toLowerCase().includes('google sign-in')) && !errorMsg.toLowerCase().includes('access denied') && (
                       <button
                         type="button"
                         onClick={() => {
@@ -1083,79 +1119,95 @@ export default function Modals() {
                     </div>
                   </div>
 
-                  {/* Google OAuth & Origin Diagnostic Details */}
-                  <div className="p-3 bg-amber-50/60 border border-amber-200/70 rounded-2xl text-left space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center space-x-1">
-                        <span>Google OAuth Origin Setup</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={copyCurrentOrigin}
-                        className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
-                      >
-                        {copiedOrigin ? '✓ Copied!' : 'Copy Origin'}
-                      </button>
-                    </div>
+                  {/* Optional Google OAuth & Origin Diagnostic Details (hidden by default unless toggled or error occurred) */}
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowClientIdConfig(!showClientIdConfig);
+                        setTempClientIdInput(activeClientId);
+                      }}
+                      className="text-[11px] text-amber-800/80 hover:text-amber-900 transition-colors cursor-pointer underline font-medium"
+                      id="btn-toggle-oauth-setup"
+                    >
+                      {showClientIdConfig ? 'Hide OAuth Setup & Client ID Settings' : 'OAuth Origin Setup & Client ID Settings'}
+                    </button>
+                  </div>
 
-                    <p className="text-[11px] text-amber-900 leading-snug font-mono break-all bg-amber-100/50 p-1.5 rounded-lg">
-                      {window.location.origin}
-                    </p>
-
-                    {!dbStatus?.googleClientConfigured && (
-                      <div className="p-2.5 bg-red-50 border border-red-200 text-red-800 text-[11px] rounded-xl font-medium text-left space-y-1">
-                        <p className="font-bold">⚠️ Vercel Environment Notice:</p>
-                        <p>
-                          <code className="font-mono bg-red-100 px-1 py-0.5 rounded text-[10px]">GOOGLE_CLIENT_ID</code> is missing in Vercel Environment Variables.
-                        </p>
-                        <p className="text-[10px] text-red-700">
-                          The app is using the default fallback Client ID, which triggers <strong className="font-mono">origin_mismatch</strong> on Vercel. Add <code className="font-mono text-[10px]">GOOGLE_CLIENT_ID</code> in Vercel settings and redeploy.
-                        </p>
-                      </div>
-                    )}
-
-                    <p className="text-[10px] text-amber-800/80 leading-normal">
-                      To prevent <strong className="text-amber-900">Error 400: origin_mismatch</strong> on Vercel, copy this origin URL and add it under <strong>Authorized JavaScript origins</strong> for your Client ID in Google Cloud Console.
-                    </p>
-
-                    <div className="pt-1 border-t border-amber-200/50 flex items-center justify-between text-[10px]">
-                      <span className="text-amber-900 font-medium truncate max-w-[200px]" title={activeClientId}>
-                        Client ID: {activeClientId ? `${activeClientId.substring(0, 18)}...` : 'None'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowClientIdConfig(!showClientIdConfig);
-                          setTempClientIdInput(activeClientId);
-                        }}
-                        className="text-amber-900 font-bold underline cursor-pointer hover:text-amber-950"
-                      >
-                        {showClientIdConfig ? 'Hide Config' : 'Change Client ID'}
-                      </button>
-                    </div>
-
-                    {showClientIdConfig && (
-                      <div className="pt-2 space-y-2">
-                        <label className="block text-[10px] font-bold text-amber-900">
-                          Custom Google Client ID:
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
-                          value={tempClientIdInput}
-                          onChange={(e) => setTempClientIdInput(e.target.value)}
-                          className="w-full text-xs font-mono p-2 border border-amber-300 rounded-xl bg-white focus:outline-none focus:border-amber-600"
-                        />
+                  {(showClientIdConfig || errorMsg.toLowerCase().includes('origin_mismatch') || errorMsg.toLowerCase().includes('google cloud console') || errorMsg.toLowerCase().includes('authorized javascript origins')) && (
+                    <div className="p-3 bg-amber-50/60 border border-amber-200/70 rounded-2xl text-left space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center space-x-1">
+                          <span>Google OAuth Origin Setup</span>
+                        </span>
                         <button
                           type="button"
-                          onClick={() => saveCustomClientId(tempClientIdInput)}
-                          className="w-full bg-amber-800 text-white hover:bg-amber-900 font-bold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
+                          onClick={copyCurrentOrigin}
+                          className="text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
                         >
-                          Save Client ID & Re-Initialize
+                          {copiedOrigin ? '✓ Copied!' : 'Copy Origin'}
                         </button>
                       </div>
-                    )}
-                  </div>
+
+                      <p className="text-[11px] text-amber-900 leading-snug font-mono break-all bg-amber-100/50 p-1.5 rounded-lg">
+                        {window.location.origin}
+                      </p>
+
+                      {!dbStatus?.googleClientConfigured && (
+                        <div className="p-2.5 bg-red-50 border border-red-200 text-red-800 text-[11px] rounded-xl font-medium text-left space-y-1">
+                          <p className="font-bold">⚠️ Vercel Environment Notice:</p>
+                          <p>
+                            <code className="font-mono bg-red-100 px-1 py-0.5 rounded text-[10px]">GOOGLE_CLIENT_ID</code> is missing in Vercel Environment Variables.
+                          </p>
+                          <p className="text-[10px] text-red-700">
+                            The app is using the default fallback Client ID, which triggers <strong className="font-mono">origin_mismatch</strong> on Vercel. Add <code className="font-mono text-[10px]">GOOGLE_CLIENT_ID</code> in Vercel settings and redeploy.
+                          </p>
+                        </div>
+                      )}
+
+                      <p className="text-[10px] text-amber-800/80 leading-normal">
+                        To prevent <strong className="text-amber-900">Error 400: origin_mismatch</strong> on Vercel, copy this origin URL and add it under <strong>Authorized JavaScript origins</strong> for your Client ID in Google Cloud Console.
+                      </p>
+
+                      <div className="pt-1 border-t border-amber-200/50 flex items-center justify-between text-[10px]">
+                        <span className="text-amber-900 font-medium truncate max-w-[200px]" title={activeClientId}>
+                          Client ID: {activeClientId ? `${activeClientId.substring(0, 18)}...` : 'None'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowClientIdConfig(!showClientIdConfig);
+                            setTempClientIdInput(activeClientId);
+                          }}
+                          className="text-amber-900 font-bold underline cursor-pointer hover:text-amber-950"
+                        >
+                          {showClientIdConfig ? 'Hide Config' : 'Change Client ID'}
+                        </button>
+                      </div>
+
+                      {showClientIdConfig && (
+                        <div className="pt-2 space-y-2">
+                          <label className="block text-[10px] font-bold text-amber-900">
+                            Custom Google Client ID:
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
+                            value={tempClientIdInput}
+                            onChange={(e) => setTempClientIdInput(e.target.value)}
+                            className="w-full text-xs font-mono p-2 border border-amber-300 rounded-xl bg-white focus:outline-none focus:border-amber-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveCustomClientId(tempClientIdInput)}
+                            className="w-full bg-amber-800 text-white hover:bg-amber-900 font-bold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Save Client ID & Re-Initialize
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="text-[10px] text-gray-400 leading-normal pt-2 font-sans">
